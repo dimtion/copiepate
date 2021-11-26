@@ -2,6 +2,13 @@
 name = "copiepate"
 version = "0.1.0"
 edition = "2021"
+description = "Send copy events over the network"
+license = "Unlicense OR MIT"
+keywords = ["clipboard", "cli", "vim"]
+categories = ["command-line-utilities"]
+homepage = "https://github.com/dimtion/copiepate"
+repository = "https://github.com/dimtion/copiepate"
+documentation = "https://github.com/dimtion/copiepate"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 

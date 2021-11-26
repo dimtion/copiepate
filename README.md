@@ -1,5 +1,7 @@
 # Copiepate
 
+[![Build](https://github.com/dimtion/copiepate/actions/workflows/rust.yml/badge.svg)](https://github.com/dimtion/copiepate/actions/workflows/rust.yml)
+
 Copiepate is a small utility to remotly set the content of a clipboard.
 
 I created this tool as I use a lot a remote tmux+vim setup and I often need to
@@ -9,9 +11,8 @@ copy a vim register to my local desktop.
 
 Using rust package manager:
 ```bash
-# To compile copiepate on Linux you'll need xorg-dev libraries.
+# On GNU+Linux you'll need xorg-dev libraries.
 # On other OSes (MacOS and Windows) this step is unecessary.
-# Here is how to get them in Ubuntu:
 sudo apt install xorg-dev libxcb-shape0-dev libxcb-xfixes0-dev
 
 # Install copiepate
