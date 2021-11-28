@@ -1,6 +1,7 @@
 use std::{io::Read, process::exit};
 
 use clap::{App, Arg, ArgMatches};
+use clipboard::{ClipboardContext, ClipboardProvider};
 use log::error;
 
 const DEFAULT_ADDRESS: &str = "127.0.0.1";
@@ -63,7 +64,12 @@ fn main() {
     let address = get_address(&matches);
 
     if matches.is_present("server") {
-        match copiepate::server::start_server(&address) {
+        let mut clipboard_ctx = ClipboardProvider::new().unwrap();
+        let mut server = copiepate::server::Server::<ClipboardContext> {
+            address: &address,
+            clipboard_ctx: &mut clipboard_ctx,
+        };
+        match server.start() {
             Ok(_) => (),
             Err(e) => {
                 error!("Failed to start server: {}", e);
@@ -74,7 +80,10 @@ fn main() {
         let mut message = Vec::new();
         let mut stdin = std::io::stdin();
         stdin.read_to_end(&mut message).unwrap();
-        match copiepate::client::start_client(&address, &message) {
+
+        let client = copiepate::client::Client { address: &address };
+
+        match client.send_message(&message) {
             Ok(_) => (),
             Err(e) => {
                 error!("Failed to send message: {}", e);

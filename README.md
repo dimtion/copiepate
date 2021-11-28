@@ -41,15 +41,6 @@ machine clipboard:
 echo -n "New clipboard content" | copiepate
 ```
 
-## Notes on security
-
-In its default configuration, copiepate listens only on the localhost address,
-meaning that the port is not exposed to the local network.
-
-WARNING: There is no authentication and encryption over the network other than
-the ssh tunnel. Meaning that any local process can write to the clipboard by
-knowing copiepate server port.
-
 ## Vim integration
 
 You can use copiepate to send the content of a vim register over the network:
@@ -66,3 +57,12 @@ noremap <leader>y :CopiePateReg<CR>
 " In visual mode, send current selection
 vnoremap <leader>y :CopiePate<CR>
 ```
+
+## Note on security
+
+In its default configuration, copiepate listens only on the localhost address,
+meaning that the port is not exposed to the local network.
+
+WARNING: There is no authentication and encryption over the network other than
+the ssh tunnel. Meaning that any local process can write to the clipboard by
+knowing copiepate server port.

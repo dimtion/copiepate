@@ -3,11 +3,43 @@ use std::{
     net::TcpListener,
 };
 
-use clipboard::{ClipboardContext, ClipboardProvider};
+use clipboard::ClipboardProvider;
 
 use crate::NetFrame;
 
-fn handle_connection<T: Sized + Read>(stream: T, clipboard_ctx: &mut ClipboardContext) {
+pub struct Server<'a, 'b, P>
+where
+    P: ClipboardProvider,
+{
+    pub address: &'a str,
+    pub clipboard_ctx: &'b mut P,
+}
+
+impl<P: ClipboardProvider> Server<'_, '_, P> {
+    pub fn start(&mut self) -> Result<(), Error> {
+        log::info!("Starting server {}", self.address);
+        let listener = TcpListener::bind(self.address)?;
+
+        for stream in listener.incoming() {
+            match stream {
+                Ok(stream) => {
+                    handle_connection(stream, self.clipboard_ctx);
+                }
+                Err(e) => {
+                    log::error!("Connection failed: {}", e);
+                }
+            }
+        }
+
+        Ok(())
+    }
+}
+
+fn handle_connection<P, T>(stream: T, clipboard_ctx: &mut P)
+where
+    P: ClipboardProvider,
+    T: Sized + Read,
+{
     let mut reader = BufReader::new(stream);
     loop {
         let frame_response = match NetFrame::from_net(&mut reader) {
@@ -37,23 +69,4 @@ fn handle_connection<T: Sized + Read>(stream: T, clipboard_ctx: &mut ClipboardCo
             }
         }
     }
-}
-
-pub fn start_server(address: &str) -> Result<(), Error> {
-    log::info!("Starting server {}", address);
-    let mut clipboard_ctx: ClipboardContext = ClipboardProvider::new().unwrap();
-    let listener = TcpListener::bind(address)?;
-
-    for stream in listener.incoming() {
-        match stream {
-            Ok(stream) => {
-                handle_connection(stream, &mut clipboard_ctx);
-            }
-            Err(e) => {
-                log::error!("Connection failed: {}", e);
-            }
-        }
-    }
-
-    Ok(())
 }
