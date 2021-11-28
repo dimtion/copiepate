@@ -1,57 +1,54 @@
 # Copiepate
 
-[![Build](https://github.com/dimtion/copiepate/actions/workflows/rust.yml/badge.svg)](https://github.com/dimtion/copiepate/actions/workflows/rust.yml)
+[![Build](https://github.com/dimtion/copiepate/actions/workflows/build.yml/badge.svg)](https://github.com/dimtion/copiepate/actions/workflows/build.yml)
+![Crates.io](https://img.shields.io/crates/v/copiepate)
+![License](https://img.shields.io/github/license/dimtion/copiepate)
 
-Copiepate is a small utility to remotly set the content of a clipboard.
+Copiepate is a small utility to remotely set the content of a clipboard.
 
-I created this tool as I use a lot a remote tmux+vim setup and I often need to
-copy a vim register to my local desktop.
+I created this tool as I frequently use a remote tmux+vim setup and I often
+need to copy a vim register to my local desktop.
 
 ## Installation
 
-Using rust package manager:
+Using Rust Cargo:
 ```bash
 # On GNU+Linux you'll need xorg-dev libraries.
 # On other OSes (MacOS and Windows) this step is unecessary.
 sudo apt install xorg-dev libxcb-shape0-dev libxcb-xfixes0-dev
 
-# Install copiepate
-cargo install copiepate
-```
-
-Using rust package manager:
-```bash
-# To compile copiepate on Linux you'll need xorg-dev libraries:
-sudo apt install xorg-dev libxcb-shape0-dev libxcb-xfixes0-dev
+# Install copiepate (both server and client):
 cargo install copiepate
 ```
 
 ## Usage
 
 On your local desktop start the daemon in server mode and forward the port 2323
-via ssh:
+using ssh:
 
 ```bash
-# Start copiepate in server mode
+# Start copiepate server and listen on 127.0.0.1:2323:
 copiepate --server
 
-# In another shell, forward the server port to the remote machine
+# In another shell, forward the server port to a remote machine:
 ssh remote-machine -R 2323:localhost:2323
 ```
 
-On the remote machine:
+On the remote machine, copiepate sends the content of stdin to the local
+machine clipboard:
 ```bash
 # Set the clipboard content of the local machine:
 echo -n "New clipboard content" | copiepate
 ```
 
-## Notes
+## Notes on security
+
 In its default configuration, copiepate listens only on the localhost address,
 meaning that the port is not exposed to the local network.
 
-WARNING: There is no authentication and encryption over the network other than the
-ssh tunnel. Meaning that any local service can in theory write to the clipboard
-knowing the port.
+WARNING: There is no authentication and encryption over the network other than
+the ssh tunnel. Meaning that any local process can write to the clipboard by
+knowing copiepate server port.
 
 ## Vim integration
 

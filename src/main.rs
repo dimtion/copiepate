@@ -23,7 +23,7 @@ fn get_log_level(matches: &ArgMatches) -> log::Level {
 
 fn init_args<'a>() -> ArgMatches<'a> {
     App::new("copiepate")
-        .version("1.0")
+        .version("0.1.0")
         .author("Loïc C. <loic.carr@gmail.com>")
         .about("Send a paste event from a client over the network to a server")
         .arg(
