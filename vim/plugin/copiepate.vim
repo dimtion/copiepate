@@ -3,7 +3,7 @@ scriptencoding utf-8
 let s:cpo_save = &cpo
 set cpo&vim
 
-if exists('g:loaded_copiepate') && g:copiepate
+if exists('g:loaded_copiepate') && g:loaded_copiepate
     finish
 endif
 let g:loaded_copiepate = 1
