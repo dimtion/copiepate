@@ -13,7 +13,11 @@ documentation = "https://github.com/dimtion/copiepate"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-clap = "2.33.3"
 clipboard = "0.5.0"
 log = "0.4.14"
 simple_logger = "1.11.0"
+etcetera = "0.3.2"
+structopt = "0.3.21"
+config = "0.11.0"
+serde_derive = "1.0.126"
+serde = "1.0.126"

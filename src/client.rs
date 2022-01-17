@@ -11,6 +11,7 @@ pub struct Client<'a> {
 
 impl Client<'_> {
     pub fn send_message(&self, message: &[u8]) -> Result<(), Error> {
+        log::debug!("Sending message to {}", self.address);
         let mut stream = TcpStream::connect(self.address)?;
 
         let frame = NetFrame::from(message);
@@ -20,7 +21,7 @@ impl Client<'_> {
         // Empty frame means end of steam
         stream.write_all(&NetFrame::empty_frame().to_net())?;
 
-        log::info!("Message sent");
+        log::info!("Message sent successfully");
 
         Ok(())
     }

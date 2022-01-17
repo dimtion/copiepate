@@ -1,5 +1,5 @@
 use log::{error, trace};
-use std::io::{Error, Read};
+use std::{io::{Error, Read}};
 
 pub mod client;
 pub mod server;

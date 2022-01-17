@@ -62,7 +62,7 @@ where
         log::debug!("Received message: '{}'", &content_string);
         match clipboard_ctx.set_contents(content_string.to_string()) {
             Ok(_) => {
-                log::debug!("Success writing to clipboard");
+                log::info!("New message saved to clipboard");
             }
             Err(e) => {
                 log::error!("Failed to write to clipboard: {}", e);
