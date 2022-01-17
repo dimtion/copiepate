@@ -9,18 +9,6 @@ Copiepate is a small utility to remotely set the content of a clipboard.
 I created this tool as I frequently use a remote tmux+vim setup and I often
 need to copy a vim register to my local desktop.
 
-## Installation
-
-Using Rust Cargo:
-```bash
-# On GNU+Linux you'll need xorg-dev libraries.
-# On other OSes (MacOS and Windows) this step is unecessary.
-sudo apt install xorg-dev libxcb-shape0-dev libxcb-xfixes0-dev
-
-# Install copiepate (both server and client):
-cargo install copiepate
-```
-
 ## Usage
 
 On your local desktop start the daemon in server mode and forward the port 2323
@@ -41,6 +29,20 @@ machine clipboard:
 echo -n "New clipboard content" | copiepate
 ```
 
+## Installation
+
+Using Rust Cargo:
+```bash
+# On GNU+Linux you'll need xorg-dev libraries.
+# On other OSes (MacOS and Windows) this step is unecessary.
+
+# Ubuntu/Debian:
+sudo apt install xorg-dev libxcb-shape0-dev libxcb-xfixes0-dev
+
+# Install copiepate (both server and client) using cargo:
+cargo install copiepate
+```
+
 ## Vim integration
 
 You can use copiepate to send the content of a vim register over the network:
@@ -56,6 +58,23 @@ noremap <leader>y :CopiePateReg<CR>
 
 " In visual mode, send current selection
 vnoremap <leader>y :CopiePate<CR>
+```
+
+## Configuration file
+
+Copiepate supports having a configuration file to persist configuration. Any
+setting set in the configuration file will be overriden by parameters passed to
+the command line:
+
+```toml
+# Copiepate XDG configuration file:
+# ~/.config/copiepate/config.toml
+
+# Bind to a specific address
+address = "192.168.0.2"
+
+# Bind to a specific port
+port = "2325"
 ```
 
 ## Note on security
