@@ -16,6 +16,7 @@ where
 }
 
 impl<P: ClipboardProvider> Server<'_, '_, P> {
+    /// Start Copiepate server. Listen for ever.
     pub fn start(&mut self) -> Result<(), Error> {
         log::info!("Starting server {}", self.address);
         let listener = TcpListener::bind(self.address)?;
@@ -23,7 +24,7 @@ impl<P: ClipboardProvider> Server<'_, '_, P> {
         for stream in listener.incoming() {
             match stream {
                 Ok(stream) => {
-                    handle_connection(stream, self.clipboard_ctx);
+                    self.handle_connection(stream);
                 }
                 Err(e) => {
                     log::error!("Connection failed: {}", e);
@@ -33,34 +34,33 @@ impl<P: ClipboardProvider> Server<'_, '_, P> {
 
         Ok(())
     }
-}
 
-fn handle_connection<P, T>(stream: T, clipboard_ctx: &mut P)
-where
-    P: ClipboardProvider,
-    T: Sized + Read,
-{
-    let mut reader = BufReader::new(stream);
-    loop {
-        let frame_response = match NetFrame::from_net(&mut reader) {
-            Ok(frame) => frame,
-            Err(e) => {
-                log::error!("Error reading stream: {}", e);
-                break;
+    fn handle_connection<T: Sized + Read>(&mut self, stream: T) {
+        let mut reader = BufReader::new(stream);
+        loop {
+            let frame = match NetFrame::from_net(&mut reader) {
+                Ok(frame) => frame,
+                Err(e) => {
+                    log::error!("Error reading stream: {}", e);
+                    break;
+                }
+            };
+
+            match frame.frame_type {
+                crate::NetFrameType::Open => (), // TODO
+                crate::NetFrameType::Message => self.handle_message(&frame),
+                crate::NetFrameType::Close => {
+                    log::trace!("Received end of stream");
+                    break;
+                },
             }
-        };
+        }
+    }
 
-        let frame = match frame_response {
-            Some(f) => f,
-            None => {
-                log::trace!("End of stream");
-                break;
-            }
-        };
-
-        let content_string = String::from_utf8_lossy(&frame.content);
+    fn handle_message(&mut self, frame: &NetFrame) {
+        let content_string = String::from_utf8_lossy(&frame.payload);
         log::debug!("Received message: '{}'", &content_string);
-        match clipboard_ctx.set_contents(content_string.to_string()) {
+        match self.clipboard_ctx.set_contents(content_string.to_string()) {
             Ok(_) => {
                 log::info!("New message saved to clipboard");
             }

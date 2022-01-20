@@ -15,11 +15,11 @@ impl Client<'_> {
         let mut stream = TcpStream::connect(self.address)?;
 
         let frame = NetFrame::from(message);
-        log::debug!("Frame size: {}", frame.size);
+        log::trace!("Frame size: {}", frame.payload_size);
         stream.write_all(&frame.to_net())?;
 
         // Empty frame means end of steam
-        stream.write_all(&NetFrame::empty_frame().to_net())?;
+        stream.write_all(&NetFrame::close_frame().to_net())?;
 
         log::info!("Message sent successfully");
 
