@@ -22,7 +22,7 @@ jobs:
 
     - name: Install ubuntu deps
       if: matrix.os == 'ubuntu-latest'
-      run: sudo apt-get -q install xorg-dev libxcb-shape0-dev libxcb-xfixes0-dev
+      run: sudo apt-get -qq update && sudo apt-get -q install xorg-dev libxcb-shape0-dev libxcb-xfixes0-dev
 
     - name: Build
       run: cargo build --verbose
