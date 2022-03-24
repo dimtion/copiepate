@@ -1,24 +1,84 @@
 use log::{error, trace};
 use num_derive::{FromPrimitive, ToPrimitive};
+use rand::prelude::*;
 use std::io::{Error, ErrorKind, Read};
 
 pub mod client;
 pub mod server;
 
-// Protocol (current):
-// client -- Message[payload] --> server
-// client -- Message[payload] --> server
-// client ------- Close[] ------> server
+/// Protocol (wanted):
+/// client ----------- Open[] -----------> server
+/// client <-------- Open[Nounce] -------- server
+/// client ------ Message[[u8]] ------> server [Encrypted with Nounce]
+/// client ------ Message[[u8]] ------> server [Encrypted with Nounce+1]
+/// client ----------- Close[] ----------> server [Encrypted with Nounce+2]
 
-// Protocol (wanted):
-// client ----------- Open[] -----------> server
-// client <-------- Open[Nounce] -------- server
-// client ------ Message[payload] ------> server [Encrypted with Nounce]
-// client ------ Message[payload] ------> server [Encrypted with Nounce+1]
-// client ----------- Close[] ----------> server [Encrypted with Nounce+2]
+// Client states:
+// Start -> Opening -> Opened -> Closed
 
 // Bump protocol version if breaking change is introduced to the network protocol.
 const PROTOCOL_VERSION: u32 = 1;
+pub const NOUNCE_SIZE: usize = 12;
+pub const KEY_SIZE: usize = 32;
+
+// deciphered close payload
+pub const CLOSE_PAYLOAD: [u8; 1] = [b'c'];
+
+#[derive(Debug, Clone, Copy)]
+pub struct Nonce {
+    value: [u8; NOUNCE_SIZE],
+}
+
+pub type Cipher = chacha20poly1305::ChaCha20Poly1305;
+
+impl Nonce {
+    /// Create a new nounce with a determined value
+    pub fn new() -> Self {
+        Self { value: random() }
+    }
+
+    /// Consume the nounce and return a new one that has not been used yet
+    pub fn consume(self) -> Self {
+        let mut value = self.value;
+        for i in (0..value.len()).rev() {
+            if let Some(v) = value[i].checked_add(1) {
+                value[i] = v;
+                break;
+            } else {
+                value[i] = 0;
+            }
+        }
+        Self { value }
+    }
+
+    pub fn cipher_nonce(&self) -> &chacha20poly1305::Nonce {
+        log::debug!("Nonce: {:?}", self.value);
+        chacha20poly1305::Nonce::from_slice(&self.value)
+    }
+}
+
+impl From<[u8; NOUNCE_SIZE]> for Nonce {
+    fn from(value: [u8; NOUNCE_SIZE]) -> Self {
+        Self { value }
+    }
+}
+
+impl TryFrom<Vec<u8>> for Nonce {
+    type Error = Vec<u8>;
+
+    fn try_from(value: Vec<u8>) -> Result<Self, Self::Error> {
+        Ok(Self {
+            value: value.try_into()?,
+        })
+    }
+}
+
+#[derive(Debug)]
+pub enum ConnectionState {
+    New,
+    Opened(Nonce),
+    Closed,
+}
 
 #[derive(Debug, Copy, Clone, FromPrimitive, ToPrimitive)]
 enum NetFrameType {
@@ -27,21 +87,31 @@ enum NetFrameType {
     Message = 2,
 }
 
+type ProtocolVersionType = u32;
+type FrameSizeType = u64;
+type NetFrameTypeType = u32;
+
+const PROTOCOL_VERSION_SIZE: usize = std::mem::size_of::<ProtocolVersionType>();
+const FRAME_SIZE_SIZE: usize = std::mem::size_of::<FrameSizeType>();
+const FRAME_TYPE_SIZE: usize = std::mem::size_of::<NetFrameTypeType>();
+
 #[derive(Debug)]
 struct NetFrame {
     /// Payload protocol version used
-    protocol_version: u32,
+    protocol_version: ProtocolVersionType,
+    /// Size of header and payload
+    frame_size: FrameSizeType,
     /// Type of frame sent
     frame_type: NetFrameType,
-    /// Size of payload
-    payload_size: u64,
     /// Content of payload
     payload: Vec<u8>,
 }
 
 fn read_protocol_version(header: &[u8]) -> Result<u32, Error> {
-    let protocol_version = u32::from_le_bytes(
-        header[0..4]
+    const OFFSET: usize = 0;
+    const WIDTH: usize = PROTOCOL_VERSION_SIZE;
+    let protocol_version = ProtocolVersionType::from_le_bytes(
+        header[OFFSET..OFFSET + WIDTH]
             .try_into()
             .expect("Slice with incorrect length"),
     );
@@ -58,9 +128,21 @@ fn read_protocol_version(header: &[u8]) -> Result<u32, Error> {
     }
 }
 
-fn read_frame_type(header: &[u8]) -> Result<NetFrameType, Error> {
+fn read_frame_size(header: &[u8]) -> Result<u64, Error> {
+    const OFFSET: usize = PROTOCOL_VERSION_SIZE;
+    const WIDTH: usize = FRAME_SIZE_SIZE;
+    Ok(FrameSizeType::from_le_bytes(
+        header[OFFSET..OFFSET + WIDTH]
+            .try_into()
+            .expect("slice with incorrect length"),
+    ))
+}
+
+fn read_frame_type(payload: &[u8]) -> Result<NetFrameType, Error> {
+    const OFFSET: usize = 0;
+    const WIDTH: usize = FRAME_TYPE_SIZE;
     let frame_type_num = u32::from_le_bytes(
-        header[4..8]
+        payload[OFFSET..OFFSET + WIDTH]
             .try_into()
             .expect("Slice with incorrect length"),
     );
@@ -77,32 +159,26 @@ fn read_frame_type(header: &[u8]) -> Result<NetFrameType, Error> {
     Ok(frame_type)
 }
 
-fn read_payload_size(header: &[u8]) -> Result<u64, Error> {
-    Ok(u64::from_le_bytes(
-        header[8..16]
-            .try_into()
-            .expect("slice with incorrect lenght"),
-    ))
-}
-
 impl NetFrame {
     /// Export a netframe to vector stream
     fn to_net(&self) -> Vec<u8> {
-        let mut vector = Vec::with_capacity(self.payload_size as usize);
+        let mut vector = Vec::with_capacity(self.frame_size as usize);
+        let frame_type = num_traits::ToPrimitive::to_u32(&self.frame_type)
+            .unwrap()
+            .to_le_bytes();
         vector.extend_from_slice(&self.protocol_version.to_le_bytes());
-        vector.extend_from_slice(
-            &(num_traits::ToPrimitive::to_u32(&self.frame_type)
-                .unwrap()
-                .to_le_bytes()),
-        );
-        vector.extend_from_slice(&self.payload_size.to_le_bytes());
+        vector.extend_from_slice(&self.frame_size.to_le_bytes());
+        vector.extend_from_slice(&frame_type);
         vector.extend_from_slice(&self.payload);
         vector
     }
 
     /// Read NetFrame from a network stream
+    /// Note: from_net does two read operation per frame, this might be
+    /// inefficient on direct fd since it will trigger syscalls on unbuffered readers.
     fn from_net<T: Read>(reader: &mut T) -> Result<Self, Error> {
-        let mut header_buffer: [u8; 4 + 4 + 8] = [0; 16];
+        const HEADER_WIDTH: usize = PROTOCOL_VERSION_SIZE + FRAME_SIZE_SIZE;
+        let mut header_buffer: [u8; HEADER_WIDTH] = [0; HEADER_WIDTH];
         match reader.read_exact(&mut header_buffer) {
             Ok(_) => (),
             Err(e) => {
@@ -112,39 +188,79 @@ impl NetFrame {
         }
 
         let protocol_version = read_protocol_version(&header_buffer)?;
-        let frame_type = read_frame_type(&header_buffer)?;
-        let payload_size = read_payload_size(&header_buffer)?;
+        let frame_size = read_frame_size(&header_buffer)?;
+        let payload_buffer_size = frame_size as usize - HEADER_WIDTH;
 
-        trace!("NetFrame payload size: {}", payload_size);
-        let mut payload = vec![0; payload_size as usize];
-        reader.read_exact(&mut payload)?;
+        trace!("NetFrame payload size: {}", payload_buffer_size);
+        let mut payload_buffer = vec![0; payload_buffer_size];
+        reader.read_exact(&mut payload_buffer)?;
 
+        let frame_type = read_frame_type(&payload_buffer)?;
+        let payload = payload_buffer.into_iter().skip(FRAME_TYPE_SIZE).collect();
         Ok(NetFrame {
             protocol_version,
+            frame_size,
             frame_type,
-            payload_size,
             payload,
         })
     }
 
     /// Close frame should be the last frame sent
-    fn close_frame() -> NetFrame {
+    fn close_frame(payload: Vec<u8>) -> NetFrame {
+        // let payload = Vec::with_capacity(0);
         Self {
             protocol_version: PROTOCOL_VERSION,
+            frame_size: NetFrame::compute_frame_size(&payload),
             frame_type: NetFrameType::Close,
-            payload_size: 0,
-            payload: vec![],
+            payload,
         }
+    }
+
+    fn open_frame() -> NetFrame {
+        let payload = Vec::with_capacity(0);
+        Self {
+            protocol_version: PROTOCOL_VERSION,
+            frame_size: NetFrame::compute_frame_size(&payload),
+            frame_type: NetFrameType::Open,
+            payload,
+        }
+    }
+    fn nounce_frame(nounce: &Nonce) -> NetFrame {
+        let payload = nounce.value.to_vec();
+        Self {
+            protocol_version: PROTOCOL_VERSION,
+            frame_size: NetFrame::compute_frame_size(&payload),
+            frame_type: NetFrameType::Open,
+            payload,
+        }
+    }
+
+    fn compute_frame_size(payload: &Vec<u8>) -> FrameSizeType {
+        (PROTOCOL_VERSION_SIZE + FRAME_TYPE_SIZE + FRAME_SIZE_SIZE + payload.len())
+            .try_into()
+            .unwrap()
     }
 }
 
 impl From<&[u8]> for NetFrame {
     fn from(message: &[u8]) -> Self {
-        NetFrame {
+        let payload = message.to_vec();
+        Self {
             protocol_version: PROTOCOL_VERSION,
+            frame_size: NetFrame::compute_frame_size(&payload),
             frame_type: NetFrameType::Message,
-            payload_size: message.len() as u64,
-            payload: message.to_vec(),
+            payload,
+        }
+    }
+}
+
+impl From<Vec<u8>> for NetFrame {
+    fn from(message: Vec<u8>) -> Self {
+        Self {
+            protocol_version: PROTOCOL_VERSION,
+            frame_size: NetFrame::compute_frame_size(&message),
+            frame_type: NetFrameType::Message,
+            payload: message,
         }
     }
 }

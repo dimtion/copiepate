@@ -8,6 +8,7 @@ use std::{
 use clipboard::ClipboardProvider;
 
 const ADDRESS: &str = "127.0.0.1:2423";
+const TESTING_INSECURE_KEY: &[u8; copiepate::KEY_SIZE] = b"__WARNING_UNSECURE_KEY_TESTING__";
 
 struct TestClipboardContext {
     pub clipboard_content: Arc<RwLock<String>>,
@@ -45,18 +46,19 @@ fn test_happy_path() -> Result<(), Box<dyn Error>> {
         let mut clipboard_ctx = TestClipboardContext {
             clipboard_content: clipboard_content.clone(),
         };
-        let mut server = copiepate::server::Server::<TestClipboardContext> {
-            address: ADDRESS,
-            clipboard_ctx: &mut clipboard_ctx,
-        };
+        let mut server = copiepate::server::Server::<TestClipboardContext>::new(
+            ADDRESS,
+            &mut clipboard_ctx,
+            TESTING_INSECURE_KEY,
+        );
         server.start().unwrap();
     });
 
     thread::sleep(Duration::from_millis(100));
 
     // 2. Send clipboard
-    let client = copiepate::client::Client { address: ADDRESS };
-    client.send_message(test_message.as_bytes())?;
+    let mut client = copiepate::client::Client::new(ADDRESS, TESTING_INSECURE_KEY);
+    client.send(test_message.as_bytes())?;
 
     // 3. Wait
     thread::sleep(Duration::from_millis(100));

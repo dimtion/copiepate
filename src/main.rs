@@ -1,14 +1,14 @@
 use std::{io::Read, path::PathBuf, process::exit};
 
+use anyhow::anyhow;
+use anyhow::Result;
 use clipboard::{ClipboardContext, ClipboardProvider};
 use etcetera::base_strategy::{self, BaseStrategy};
 use serde_derive::{Deserialize, Serialize};
 use simple_logger::SimpleLogger;
-use std::error::Error;
 use structopt::StructOpt;
 
 // TODO: move opts and opts parsing to a proper module
-// TODO: add encryption configuration in config file
 // TODO: add option to execute another command
 // TODO: find a nice solution to avoid "eating std in" when necessary (network
 //       issue, paste-bin lost on server side etc...
@@ -20,6 +20,10 @@ const DEFAULT_PORT: &str = "2323";
 
 const DEFAULT_CONFIG_DIR: &str = "copiepate";
 const DEFAULT_CONFIG_FILENAME: &str = "config.toml";
+
+/// Unsecure key used for unsecure mode. WARNING: using this key is as if the message
+/// was sent as plaintext over the network.
+pub const DEFAULT_INSECURE_KEY: &[u8; copiepate::KEY_SIZE] = b"_WARNING_UNSECURE_KEY_PLAINTEXT_";
 
 #[derive(Debug, StructOpt, Deserialize, Serialize)]
 #[structopt(
@@ -64,14 +68,40 @@ struct Opt {
         parse(from_occurrences)
     )]
     verbosity: u64,
+
+    #[structopt(
+        short = "-k",
+        long = "--insecure",
+        help = "Do not encrypt message over the network. WARNING: anybody might be able to read the messages."
+    )]
+    insecure: bool,
+
+    #[structopt(
+        long = "--secret",
+        help = "32 bits base64 encoded secret to use to contact the server.
+Must be the same between client and server. If `--insecure` is set, will be discarded"
+    )]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    secret: Option<String>,
 }
 
-fn get_address(opt: &Opt) -> Result<String, ()> {
+fn get_address(opt: &Opt) -> Result<String> {
     Ok(format!(
         "{}:{}",
-        opt.address.as_ref().ok_or(())?,
-        opt.port.as_ref().ok_or(())?
+        opt.address.as_ref().ok_or(anyhow!("Missing address"))?,
+        opt.port.as_ref().ok_or(anyhow!("Missing port"))?,
     ))
+}
+
+fn get_key(opt: &Opt) -> Result<Vec<u8>> {
+    if opt.insecure {
+        Ok(DEFAULT_INSECURE_KEY.to_vec())
+    } else {
+        match &opt.secret {
+            None => Err(anyhow!("Did not find any key.")),
+            Some(k) => Ok(base64::decode(k.clone())?),
+        }
+    }
 }
 
 fn get_log_level(verbosity: u64) -> log::LevelFilter {
@@ -82,7 +112,7 @@ fn get_log_level(verbosity: u64) -> log::LevelFilter {
     }
 }
 
-fn load_config(opt: &Opt) -> Result<Opt, Box<dyn Error>> {
+fn load_config(opt: &Opt) -> Result<Opt> {
     match &opt.config_file {
         None => (),
         Some(filename) => {
@@ -147,14 +177,13 @@ fn main() {
     log::trace!("Configuration: {:#?}", &config);
 
     let address = get_address(&config).expect("Failed to load server address");
+    let key = get_key(&config).expect("Failed to load key.");
 
     if config.server_mode {
         let mut clipboard_ctx =
             ClipboardProvider::new().expect("Unable to load clipboard provider");
-        let mut server = copiepate::server::Server::<ClipboardContext> {
-            address: &address,
-            clipboard_ctx: &mut clipboard_ctx,
-        };
+        let mut server =
+            copiepate::server::Server::<ClipboardContext>::new(&address, &mut clipboard_ctx, &key);
         match server.start() {
             Ok(_) => (),
             Err(e) => {
@@ -167,9 +196,9 @@ fn main() {
         let mut stdin = std::io::stdin();
         stdin.read_to_end(&mut message).unwrap();
 
-        let client = copiepate::client::Client { address: &address };
+        let mut client = copiepate::client::Client::new(&address, &key);
 
-        match client.send_message(&message) {
+        match client.send(&message) {
             Ok(_) => (),
             Err(e) => {
                 log::error!("Failed to send message: {}", e);
