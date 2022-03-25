@@ -32,11 +32,6 @@ pub struct Nonce {
 pub type Cipher = chacha20poly1305::ChaCha20Poly1305;
 
 impl Nonce {
-    /// Create a new nounce with a determined value
-    pub fn new() -> Self {
-        Self { value: random() }
-    }
-
     /// Consume the nounce and return a new one that has not been used yet
     pub fn consume(self) -> Self {
         let mut value = self.value;
@@ -51,12 +46,18 @@ impl Nonce {
         Self { value }
     }
 
+    /// Get Nonce reference digestable by current cipher.
     pub fn cipher_nonce(&self) -> &chacha20poly1305::Nonce {
-        log::debug!("Nonce: {:?}", self.value);
         chacha20poly1305::Nonce::from_slice(&self.value)
     }
 }
 
+impl Default for Nonce {
+    /// Create a new nonce with a random value
+    fn default() -> Self {
+        Self { value: random() }
+    }
+}
 impl From<[u8; NOUNCE_SIZE]> for Nonce {
     fn from(value: [u8; NOUNCE_SIZE]) -> Self {
         Self { value }
@@ -235,7 +236,7 @@ impl NetFrame {
         }
     }
 
-    fn compute_frame_size(payload: &Vec<u8>) -> FrameSizeType {
+    fn compute_frame_size(payload: &[u8]) -> FrameSizeType {
         (PROTOCOL_VERSION_SIZE + FRAME_TYPE_SIZE + FRAME_SIZE_SIZE + payload.len())
             .try_into()
             .unwrap()

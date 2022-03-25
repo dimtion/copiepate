@@ -63,8 +63,6 @@ impl<'a> Client<'a> {
 
         stream.flush()?;
 
-        log::info!("Message sent successfully");
-
         Ok(())
     }
 
@@ -107,7 +105,7 @@ impl<'a> Client<'a> {
         let cipher_payload = self
             .cipher
             .encrypt(nonce.cipher_nonce(), CLOSE_PAYLOAD.as_slice())
-            .map_err(|e| ClientError::Encryption(e))?;
+            .map_err(ClientError::Encryption)?;
         stream.write_all(&NetFrame::close_frame(cipher_payload).to_net())?;
         self.state = crate::ConnectionState::Closed;
         Ok(())
@@ -130,7 +128,7 @@ impl<'a> Client<'a> {
         let cipher_message = self
             .cipher
             .encrypt(nonce.cipher_nonce(), message)
-            .map_err(|e| ClientError::Encryption(e))?;
+            .map_err(ClientError::Encryption)?;
         let message_frame = NetFrame::from(cipher_message);
         log::trace!("Sending payload with size: {}", message_frame.frame_size);
         stream.write_all(&message_frame.to_net())?;

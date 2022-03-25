@@ -1,6 +1,6 @@
 [package]
 name = "copiepate"
-version = "0.2.0"
+version = "0.2.1"
 edition = "2021"
 description = "Send copy events over the network"
 license = "MIT"
@@ -15,7 +15,7 @@ documentation = "https://github.com/dimtion/copiepate"
 [dependencies]
 clipboard = "0.5.0"
 log = "0.4.14"
-simple_logger = "1.11.0"
+simple_logger = { version = "1.11.0", features = ["stderr"] }
 etcetera = "0.3.2"
 structopt = "0.3.21"
 config = "0.11.0"
@@ -28,3 +28,4 @@ base64 = "0.13.0"
 anyhow = "1.0.56"
 thiserror = "1.0.30"
 rand = "0.8.5"
+derive_builder = "0.11.1"

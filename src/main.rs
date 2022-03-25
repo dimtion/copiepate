@@ -1,3 +1,4 @@
+use std::io::Write;
 use std::{io::Read, path::PathBuf, process::exit};
 
 use anyhow::anyhow;
@@ -33,7 +34,6 @@ pub const DEFAULT_INSECURE_KEY: &[u8; copiepate::KEY_SIZE] = b"_WARNING_UNSECURE
 )]
 struct Opt {
     #[structopt(
-        short,
         long = "config",
         help = "Configuration file. Default configuration location depends on OS.
 ~/.config/copiepate/config.toml for XDG-compatible OSes.",
@@ -64,7 +64,8 @@ struct Opt {
     #[structopt(
         short = "v",
         long = "verbosity",
-        help = "Sets the level of verbosity",
+        help = "Sets the level of verbosity. Copiepate will log service messages on stderr.
+Increase log level to have more information.",
         parse(from_occurrences)
     )]
     verbosity: u64,
@@ -72,7 +73,8 @@ struct Opt {
     #[structopt(
         short = "-k",
         long = "--insecure",
-        help = "Do not encrypt message over the network. WARNING: anybody might be able to read the messages."
+        help = "Do not encrypt message over the network.
+WARNING: anybody might be able to read the messages."
     )]
     insecure: bool,
 
@@ -83,13 +85,29 @@ Must be the same between client and server. If `--insecure` is set, will be disc
     )]
     #[serde(skip_serializing_if = "Option::is_none")]
     secret: Option<String>,
+
+    #[structopt(
+        long = "--tee",
+        help = "[Client only] With `--tee`, copiepate will behave like the tee built-in and redirect the stdin to stdout."
+    )]
+    tee: bool,
+
+    #[structopt(
+        long = "--exec",
+        help = "[Server only] Shell to command to execute when receiving a new message.
+Received message will be passed as stdin to the invoked command."
+    )]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    exec: Option<String>,
 }
 
 fn get_address(opt: &Opt) -> Result<String> {
     Ok(format!(
         "{}:{}",
-        opt.address.as_ref().ok_or(anyhow!("Missing address"))?,
-        opt.port.as_ref().ok_or(anyhow!("Missing port"))?,
+        opt.address
+            .as_ref()
+            .ok_or_else(|| anyhow!("Missing address"))?,
+        opt.port.as_ref().ok_or_else(|| anyhow!("Missing port"))?,
     ))
 }
 
@@ -170,6 +188,13 @@ fn create_logger(opt: &Opt) {
     logger.init().unwrap();
 }
 
+fn tee(message: &[u8]) -> Result<()> {
+    let mut stdout = std::io::stdout();
+    stdout.write_all(message)?;
+    stdout.flush()?;
+    Ok(())
+}
+
 fn main() {
     let opt = Opt::from_args();
     create_logger(&opt);
@@ -183,7 +208,13 @@ fn main() {
         let mut clipboard_ctx =
             ClipboardProvider::new().expect("Unable to load clipboard provider");
         let mut server =
-            copiepate::server::Server::<ClipboardContext>::new(&address, &mut clipboard_ctx, &key);
+            copiepate::server::ServerBuilder::<ClipboardContext>::default()
+            .address(&address)
+            .clipboard_ctx(&mut clipboard_ctx)
+            .key(&key)
+            .exec_command(config.exec)
+            .build()
+            .expect("Could not build server");
         match server.start() {
             Ok(_) => (),
             Err(e) => {
@@ -198,8 +229,16 @@ fn main() {
 
         let mut client = copiepate::client::Client::new(&address, &key);
 
+        if config.tee {
+            tee(&message).expect("Could not write to stdout");
+            // Empty stderr line to have a separation between tee-ed message and service message
+            eprintln!();
+        }
+
         match client.send(&message) {
-            Ok(_) => (),
+            Ok(_) => {
+                log::info!("Message sent successfully");
+            }
             Err(e) => {
                 log::error!("Failed to send message: {}", e);
                 exit(1);

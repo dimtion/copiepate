@@ -1,24 +1,23 @@
-use std::{
-    io::{Read, Write},
-    net::TcpListener,
-};
+use std::io::{Read, Write};
 
-use chacha20poly1305::aead::{Aead, NewAead};
-use chacha20poly1305::Key;
-use clipboard::ClipboardProvider;
-use thiserror::Error;
+use chacha20poly1305::aead::Aead;
 
 use crate::{Cipher, NetFrame, Nonce, CLOSE_PAYLOAD};
 
-pub struct Server<'a, 'b, P>
-where
-    P: ClipboardProvider,
-{
-    address: &'a str,
-    clipboard_ctx: &'b mut P,
-    cipher: Cipher,
+use super::error::ServerError;
+
+enum FrameEvent {
+    Open,
+    Message(PasteEvent),
+    Closed,
 }
-struct Connection<Stream>
+
+#[derive(Debug, Clone)]
+pub struct PasteEvent {
+    pub payload: String,
+}
+
+pub struct Connection<Stream>
 where
     Stream: Sized + Read + Write,
 {
@@ -27,23 +26,11 @@ where
     state: crate::ConnectionState,
 }
 
-#[derive(Error, Debug)]
-pub enum ServerError {
-    #[error(transparent)]
-    Io(#[from] std::io::Error),
-
-    #[error("Invalid state")]
-    InvalidState,
-
-    #[error("Decryption error: {0}")]
-    Decryption(chacha20poly1305::aead::Error),
-}
-
 impl<Stream> Connection<Stream>
 where
     Stream: Sized + Read + Write,
 {
-    fn new(stream: Stream, cipher: Cipher) -> Self {
+    pub fn new(stream: Stream, cipher: Cipher) -> Self {
         Self {
             stream,
             cipher,
@@ -73,7 +60,7 @@ where
         let message = self
             .cipher
             .decrypt(nounce.cipher_nonce(), frame.payload.as_ref())
-            .map_err(|e| ServerError::Decryption(e))?;
+            .map_err(ServerError::Decryption)?;
 
         if message != CLOSE_PAYLOAD {
             log::error!("Received invalid close payload. Discarding.");
@@ -85,7 +72,7 @@ where
     fn handle_open(&mut self, _frame: &NetFrame) -> Result<FrameEvent, ServerError> {
         log::trace!("Received open connection");
         // TODO: create state machine/other to make sure only one nounce is sent
-        let nounce = Nonce::new();
+        let nounce = Nonce::default();
         let nounce_frame = NetFrame::nounce_frame(&nounce);
         self.stream.write_all(&nounce_frame.to_net())?;
         self.state = crate::ConnectionState::Opened(nounce);
@@ -105,7 +92,7 @@ where
         let message = self
             .cipher
             .decrypt(nounce.cipher_nonce(), frame.payload.as_ref())
-            .map_err(|e| ServerError::Decryption(e))?;
+            .map_err(ServerError::Decryption)?;
 
         // Using lossy conversion here in case copy event from the other system is not utf-8.
         // A better implementation would perhaps be passing the encoding in the protocol
@@ -118,17 +105,6 @@ where
             payload: content_string.into_owned(),
         }))
     }
-}
-
-enum FrameEvent {
-    Open,
-    Message(PasteEvent),
-    Closed,
-}
-
-#[derive(Debug, Clone)]
-struct PasteEvent {
-    pub payload: String,
 }
 
 impl<Stream> Iterator for Connection<Stream>
@@ -149,64 +125,6 @@ where
                 FrameEvent::Closed => return None,
                 FrameEvent::Open => (), // Wait for next frame on Open
                 FrameEvent::Message(m) => return Some(Ok(m)),
-            }
-        }
-    }
-}
-
-impl<'a, 'b, P: ClipboardProvider> Server<'a, 'b, P> {
-    pub fn new(address: &'a str, clipboard_ctx: &'b mut P, key: &[u8]) -> Self {
-        let key = Key::from_slice(key).to_owned();
-        let cipher = Cipher::new(&key);
-        Self {
-            address,
-            clipboard_ctx,
-            cipher,
-        }
-    }
-
-    /// Start Copiepate server. Listen for ever.
-    pub fn start(&mut self) -> Result<(), ServerError> {
-        log::info!("Starting server {}", self.address);
-        let listener = TcpListener::bind(self.address)?;
-
-        for stream in listener.incoming() {
-            match stream {
-                Ok(stream) => {
-                    self.handle_connection(stream);
-                }
-                Err(e) => {
-                    log::error!("Connection failed: {}", e);
-                }
-            }
-        }
-
-        Ok(())
-    }
-
-    fn handle_connection<Stream>(&mut self, stream: Stream)
-    where
-        Stream: Sized + Read + Write,
-    {
-        let connection = Connection::new(stream, self.cipher.clone());
-        for paste_event in connection {
-            match paste_event {
-                Ok(e) => self.handle_paste_event(&e),
-                Err(e) => {
-                    log::error!("Error handling connection: {e}");
-                    break;
-                }
-            }
-        }
-    }
-
-    fn handle_paste_event(&mut self, event: &PasteEvent) {
-        match self.clipboard_ctx.set_contents(event.payload.clone()) {
-            Ok(_) => {
-                log::info!("New message saved to clipboard");
-            }
-            Err(e) => {
-                log::error!("Failed to write to clipboard: {}", e);
             }
         }
     }

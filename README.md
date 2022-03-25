@@ -73,22 +73,52 @@ vnoremap <leader>y :CopiePate<CR>
 
 ## Configuration file
 
-Copiepate supports having a configuration file to persist configuration. Any
-setting set in the configuration file will be overriden by parameters passed to
-the command line:
+Copiepate supports having a configuration file to persist configuration.
+Every setting can either be stored in the config file or by a command line argument.
+Any setting set in the configuration file will be overriden by parameters passed
+ to the command line.
+
+ See full list of settings running  `copiepate --help`.
 
 ```toml
 # Copiepate XDG configuration file:
 # ~/.config/copiepate/config.toml
 
 # Bind to a specific address
+# Optional, default = 127.0.0.1
 address = "192.168.0.2"
 
 # Bind to a non default port
+# Optional, default = 2323
 port = "2325"
 
 # Set a secret in base64 format
 secret = "/f7NyvhS4k90gnstzXVPk/SpRl/Ex4EX9tyHRA2rT0w="
+
+# [Server only]
+# Specify a shell command to invoke whenever a paste event is received.
+# Optional, default = ""
+#
+# Some examples:
+# Show notification in MacOS:
+# exec = "xargs -I % -0 -n 1 osascript -e \"display notification \\\"%\\\" with title \\\"Copiepate\\\"\""
+#
+# Show notification on GNU+Linux:
+# exec = "xargs -I % -0 -n 1 notify-send \"%\""
+#
+# Log copy events to disk:
+# exec = "cat >> copiepate_events.log"
+#
+# Ring terminal bell:
+exec = "echo -en \"\007\""
+
+# [Client only]
+# Use copiepate as a passthrough. This allows to split an stdin between the send event and stdout.
+# Optional, default = false
+#
+# Usage example:
+# $ input_process | copiepate --tee > remove_copy_of_input_process.txt
+tee = true
 ```
 
 ## Note on security
