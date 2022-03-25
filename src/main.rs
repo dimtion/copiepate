@@ -10,11 +10,11 @@ use simple_logger::SimpleLogger;
 use structopt::StructOpt;
 
 // TODO: move opts and opts parsing to a proper module
-// TODO: add option to execute another command
-// TODO: find a nice solution to avoid "eating std in" when necessary (network
-//       issue, paste-bin lost on server side etc...
-// TODO: notification/alert on server side when received event?
 // TODO: client/server specific configuration
+// TODO: json output
+// TODO: auto-configuration on startup
+// TODO: review error handling (especially server-side)
+// TODO: add code coverage
 
 const DEFAULT_ADDRESS: &str = "127.0.0.1";
 const DEFAULT_PORT: &str = "2323";
