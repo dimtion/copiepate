@@ -9,6 +9,8 @@ Copiepate is a small utility to remotely set the content of a clipboard.
 I created this tool as I frequently use a remote tmux+vim setup and I often
 need to copy a vim register to my local desktop.
 
+![copiepate animation](.github/img/copiepate-animation.gif)
+
 ## Usage
 
 On your local desktop start the daemon in server mode and forward the port 2323
@@ -19,7 +21,7 @@ using ssh:
 copiepate --server
 
 # In another shell, forward the server port to a remote machine:
-ssh remote-machine -R 2323:localhost:2323
+ssh remote-machine -N -R 2323:localhost:2323
 ```
 
 On the remote machine, copiepate sends the content of stdin to the local
