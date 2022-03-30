@@ -46,8 +46,7 @@ fn test_happy_path() -> Result<(), Box<dyn Error>> {
         let mut clipboard_ctx = TestClipboardContext {
             clipboard_content: clipboard_content.clone(),
         };
-        let mut server =
-            copiepate::server::ServerBuilder::<TestClipboardContext>::default()
+        let mut server = copiepate::server::ServerBuilder::<TestClipboardContext>::default()
             .address(ADDRESS)
             .clipboard_ctx(&mut clipboard_ctx)
             .key(TESTING_INSECURE_KEY)

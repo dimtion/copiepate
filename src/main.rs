@@ -112,14 +112,22 @@ fn get_address(opt: &Opt) -> Result<String> {
 }
 
 fn get_key(opt: &Opt) -> Result<Vec<u8>> {
-    if opt.insecure {
+    let secret = if opt.insecure {
         Ok(DEFAULT_INSECURE_KEY.to_vec())
     } else {
         match &opt.secret {
-            None => Err(anyhow!("Did not find any key.")),
+            None => Err(anyhow!("No secret provided.")),
             Some(k) => Ok(base64::decode(k.clone())?),
         }
-    }
+    };
+
+    secret.and_then(|s| match s.len() {
+        copiepate::KEY_SIZE => Ok(s),
+        _ => Err(anyhow!(
+            "Decoded secret must have a length of {} bytes.",
+            copiepate::KEY_SIZE
+        )),
+    })
 }
 
 fn get_log_level(verbosity: u64) -> log::LevelFilter {
@@ -135,7 +143,7 @@ fn load_config(opt: &Opt) -> Result<Opt> {
         None => (),
         Some(filename) => {
             if !filename.exists() {
-                panic!("Configuration file {:?} does not exist.", filename);
+                return Err(anyhow!("Configuration file {:?} does not exist.", filename));
             }
         }
     }
@@ -162,7 +170,7 @@ fn load_config(opt: &Opt) -> Result<Opt> {
         .then(|| {
             match settings.merge(config::File::from(config_filename.as_path())) {
                 Ok(_) => (),
-                Err(e) => log::warn!("Error loading config file: {}", e),
+                Err(e) => log::warn!("Failed to load configuration file: {}", e),
             };
         })
         .unwrap_or_else(|| {
@@ -198,23 +206,45 @@ fn tee(message: &[u8]) -> Result<()> {
 fn main() {
     let opt = Opt::from_args();
     create_logger(&opt);
-    let config = load_config(&opt).expect("Unable to load configuration");
+
+    let config = match load_config(&opt) {
+        Ok(c) => c,
+        Err(e) => {
+            log::error!(
+                "Failed to load configuration.
+Error: {}",
+                e
+            );
+            exit(1);
+        }
+    };
     log::trace!("Configuration: {:#?}", &config);
 
     let address = get_address(&config).expect("Failed to load server address");
-    let key = get_key(&config).expect("Failed to load key.");
+    let key = match get_key(&config) {
+        Ok(k) => k,
+        Err(e) => {
+            log::error!(
+                "Failed to load secret.
+
+You must specify a valid Base64 secret, either in the configuration file or by passing the --secret option.
+More information: https://github.com/dimtion/copiepate#setup-and-installation
+
+Error: {} ", e);
+            exit(1);
+        }
+    };
 
     if config.server_mode {
         let mut clipboard_ctx =
-            ClipboardProvider::new().expect("Unable to load clipboard provider");
-        let mut server =
-            copiepate::server::ServerBuilder::<ClipboardContext>::default()
+            ClipboardProvider::new().expect("Failed to load clipboard provider");
+        let mut server = copiepate::server::ServerBuilder::<ClipboardContext>::default()
             .address(&address)
             .clipboard_ctx(&mut clipboard_ctx)
             .key(&key)
             .exec_command(config.exec)
             .build()
-            .expect("Could not build server");
+            .expect("Failed setting up copiepate server");
         match server.start() {
             Ok(_) => (),
             Err(e) => {
@@ -230,7 +260,7 @@ fn main() {
         let mut client = copiepate::client::Client::new(&address, &key);
 
         if config.tee {
-            tee(&message).expect("Could not write to stdout");
+            tee(&message).expect("Failed to write to stdout");
             // Empty stderr line to have a separation between tee-ed message and service message
             eprintln!();
         }
