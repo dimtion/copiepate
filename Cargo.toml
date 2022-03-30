@@ -15,7 +15,7 @@ documentation = "https://github.com/dimtion/copiepate"
 [dependencies]
 clipboard = "0.5.0"
 log = "0.4.14"
-simple_logger = { version = "1.11.0", features = ["stderr"] }
+simple_logger = { version = "2.1.0", default-features = false, features = ["stderr", "colors"] }
 etcetera = "0.3.2"
 structopt = "0.3.21"
 config = "0.11.0"
