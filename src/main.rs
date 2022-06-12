@@ -9,12 +9,13 @@ use serde_derive::{Deserialize, Serialize};
 use simple_logger::SimpleLogger;
 use structopt::StructOpt;
 
-// TODO: move opts and opts parsing to a proper module
-// TODO: client/server specific configuration
-// TODO: json output
-// TODO: auto-configuration on startup
-// TODO: review error handling (especially server-side)
-// TODO: add code coverage
+// TODO(chore): move opts and opts parsing to a proper module
+// TODO(test): add code coverage
+// TODO(feat): review error handling (especially server-side)
+// TODO(feat): json output
+// TODO(feat): client/server specific configuration
+// TODO(feat): auto-configuration on startup
+// TODO(feat): allow reverse event sending (from server to client)
 
 const DEFAULT_ADDRESS: &str = "127.0.0.1";
 const DEFAULT_PORT: &str = "2323";
