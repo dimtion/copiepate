@@ -3,6 +3,7 @@ use std::{io::Read, path::PathBuf, process::exit};
 
 use anyhow::anyhow;
 use anyhow::Result;
+use base64::Engine;
 use clipboard::{ClipboardContext, ClipboardProvider};
 use etcetera::base_strategy::{self, BaseStrategy};
 use serde_derive::{Deserialize, Serialize};
@@ -116,9 +117,10 @@ fn get_key(opt: &Opt) -> Result<Vec<u8>> {
     let secret = if opt.insecure {
         Ok(DEFAULT_INSECURE_KEY.to_vec())
     } else {
+        let decoder = base64::engine::general_purpose::STANDARD;
         match &opt.secret {
             None => Err(anyhow!("No secret provided.")),
-            Some(k) => Ok(base64::decode(k.clone())?),
+            Some(k) => Ok(decoder.decode(k.clone())?),
         }
     };
 
@@ -157,30 +159,24 @@ fn load_config(opt: &Opt) -> Result<Opt> {
             .join(DEFAULT_CONFIG_FILENAME)
     });
 
-    let mut settings = config::Config::default();
+    let mut settings = config::ConfigBuilder::<config::builder::DefaultState>::default();
 
-    settings
+    settings = settings
         .set_default("config_file", config_filename.to_string_lossy().to_string())?
         .set_default("server_mode", false)?
         .set_default("address", DEFAULT_ADDRESS)?
         .set_default("port", DEFAULT_PORT)?;
 
     log::info!(target: "server", "Loading configuration file: {:?}", &config_filename);
-    config_filename
-        .exists()
-        .then(|| {
-            match settings.merge(config::File::from(config_filename.as_path())) {
-                Ok(_) => (),
-                Err(e) => log::warn!("Failed to load configuration file: {}", e),
-            };
-        })
-        .unwrap_or_else(|| {
+    if config_filename.exists() {
+        settings = settings.add_source(config::File::from(config_filename.as_path()));
+    } else {
             log::warn!(target: "server", "No configuration file. Using default values.");
-        });
+    }
 
-    settings.merge(config::Config::try_from(opt)?)?;
+    settings = settings.add_source(config::Config::try_from(opt)?);
 
-    Ok(settings.try_into()?)
+    Ok(settings.build()?.try_deserialize()?)
 }
 
 fn create_logger(opt: &Opt) {

@@ -3,8 +3,9 @@ use std::{
     net::TcpStream,
 };
 
-use chacha20poly1305::aead::{Aead, NewAead};
+use chacha20poly1305::aead::{Aead};
 use chacha20poly1305::Key;
+use chacha20poly1305::KeyInit;
 use thiserror::Error;
 
 use crate::{Cipher, NetFrame, Nonce, CLOSE_PAYLOAD};

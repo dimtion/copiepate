@@ -4,8 +4,8 @@ use std::{
     process::{Command, Stdio},
 };
 
-use chacha20poly1305::aead::NewAead;
 use chacha20poly1305::Key;
+use chacha20poly1305::KeyInit;
 use clipboard::ClipboardProvider;
 use derive_builder::Builder;
 
@@ -36,7 +36,10 @@ where
     exec_command: Option<String>,
 }
 
-impl<'a, 'b, P: ClipboardProvider> ServerBuilder<'a, 'b, P> {
+impl<'a, 'b, P> ServerBuilder<'a, 'b, P>
+where
+    P: ClipboardProvider,
+{
     pub fn key(mut self, value: &[u8]) -> Self {
         let key = Key::from_slice(value).to_owned();
         let cipher = Cipher::new(&key);
@@ -45,7 +48,10 @@ impl<'a, 'b, P: ClipboardProvider> ServerBuilder<'a, 'b, P> {
     }
 }
 
-impl<'a, 'b, P: ClipboardProvider> Server<'a, 'b, P> {
+impl<'a, 'b, P> Server<'a, 'b, P>
+where
+    P: ClipboardProvider,
+{
     /// Start Copiepate server. Listen for ever.
     pub fn start(&mut self) -> Result<(), ServerError> {
         log::info!("Starting server {}", self.address);
@@ -82,17 +88,15 @@ impl<'a, 'b, P: ClipboardProvider> Server<'a, 'b, P> {
     }
 
     fn handle_paste_event(&mut self, event: &PasteEvent) {
-        match self.clipboard_ctx.set_contents(event.payload.clone()) {
-            Ok(_) => {
-                log::info!("New message saved to clipboard");
-                self.exec_command(event).unwrap_or_else(|e| {
-                    log::error!("Failed to execute custom command: {}", e);
-                });
-            }
-            Err(e) => {
-                log::error!("Failed to write to clipboard: {}", e);
-            }
+        if let Err(e) = self.clipboard_ctx.set_contents(event.payload.clone()) {
+            log::error!("Failed to write to clipboard: {}", e);
+            return;
         }
+
+        log::info!("New message saved to clipboard");
+        if let Err(e) = self.exec_command(event) {
+            log::error!("Failed to execute custom command: {}", e);
+        };
     }
 
     fn exec_command(&self, event: &PasteEvent) -> Result<(), ServerError> {

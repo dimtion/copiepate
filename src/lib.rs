@@ -83,8 +83,11 @@ pub enum ConnectionState {
 
 #[derive(Debug, Copy, Clone, FromPrimitive, ToPrimitive)]
 enum NetFrameType {
+    /// Open new connection
     Open = 0,
+    /// Close connection
     Close = 1,
+    /// Send a message
     Message = 2,
 }
 
@@ -96,6 +99,15 @@ const PROTOCOL_VERSION_SIZE: usize = std::mem::size_of::<ProtocolVersionType>();
 const FRAME_SIZE_SIZE: usize = std::mem::size_of::<FrameSizeType>();
 const FRAME_TYPE_SIZE: usize = std::mem::size_of::<NetFrameTypeType>();
 
+/// Netframe representation on network:
+/// | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 |
+/// | ----------------------------- |
+/// | prot version  | frame_size... |
+/// | ...frame_size | frame_type    |
+/// | ----------------------------- |
+/// |             payload           |
+/// |                               |
+/// | ----------------------------- |
 #[derive(Debug)]
 struct NetFrame {
     /// Payload protocol version used
@@ -175,8 +187,9 @@ impl NetFrame {
     }
 
     /// Read NetFrame from a network stream
-    /// Note: from_net does two read operation per frame, this might be
-    /// inefficient on direct fd since it will trigger syscalls on unbuffered readers.
+    /// Note: from_net does two read operation per frame (one for header, one for the
+    /// payload), this might be inefficient on direct fd since it will trigger
+    ///  syscalls on unbuffered readers.
     fn from_net<T: Read>(reader: &mut T) -> Result<Self, Error> {
         const HEADER_WIDTH: usize = PROTOCOL_VERSION_SIZE + FRAME_SIZE_SIZE;
         let mut header_buffer: [u8; HEADER_WIDTH] = [0; HEADER_WIDTH];
@@ -208,7 +221,6 @@ impl NetFrame {
 
     /// Close frame should be the last frame sent
     fn close_frame(payload: Vec<u8>) -> NetFrame {
-        // let payload = Vec::with_capacity(0);
         Self {
             protocol_version: PROTOCOL_VERSION,
             frame_size: NetFrame::compute_frame_size(&payload),
