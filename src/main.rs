@@ -171,7 +171,7 @@ fn load_config(opt: &Opt) -> Result<Opt> {
     if config_filename.exists() {
         settings = settings.add_source(config::File::from(config_filename.as_path()));
     } else {
-            log::warn!(target: "server", "No configuration file. Using default values.");
+        log::warn!(target: "server", "No configuration file. Using default values.");
     }
 
     settings = settings.add_source(config::Config::try_from(opt)?);

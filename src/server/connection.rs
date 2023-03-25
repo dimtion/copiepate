@@ -9,12 +9,24 @@ use super::error::ServerError;
 enum FrameEvent {
     Open,
     Message(PasteEvent),
+    Exec(ExecEvent),
     Closed,
 }
 
 #[derive(Debug, Clone)]
 pub struct PasteEvent {
     pub payload: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct ExecEvent {
+    pub payload: String,
+}
+
+#[derive(Debug, Clone)]
+pub enum Event {
+    PasteEvent(PasteEvent),
+    ExecEvent(ExecEvent),
 }
 
 pub struct Connection<Stream>
@@ -43,7 +55,8 @@ where
 
         match frame.frame_type {
             crate::NetFrameType::Open => self.handle_open(&frame),
-            crate::NetFrameType::Message => self.handle_message(&frame),
+            crate::NetFrameType::CopyMessage => self.handle_copy_message(&frame),
+            crate::NetFrameType::ExecMessage => self.handle_exec_message(&frame),
             crate::NetFrameType::Close => self.handle_close(&frame),
         }
     }
@@ -79,8 +92,23 @@ where
         Ok(FrameEvent::Open)
     }
 
-    fn handle_message(&mut self, frame: &NetFrame) -> Result<FrameEvent, ServerError> {
-        log::trace!("Received new message");
+    fn handle_copy_message(&mut self, frame: &NetFrame) -> Result<FrameEvent, ServerError> {
+        log::trace!("Received new copy message");
+        let payload = self.parse_message(frame)?;
+
+        log::debug!("Received message: '{}'", &payload);
+        Ok(FrameEvent::Message(PasteEvent { payload }))
+    }
+
+    fn handle_exec_message(&mut self, frame: &NetFrame) -> Result<FrameEvent, ServerError> {
+        log::trace!("Received new event message");
+        let payload = self.parse_message(frame)?;
+
+        log::debug!("Received message: '{}'", &payload);
+        Ok(FrameEvent::Exec(ExecEvent { payload }))
+    }
+
+    fn parse_message(&mut self, frame: &NetFrame) -> Result<String, ServerError> {
         // TODO: Solve issue for frame_type leaking issue (parse if opened, otherwise decrypt?)
         let nounce = match &self.state {
             crate::ConnectionState::Opened(nounce) => nounce,
@@ -93,17 +121,13 @@ where
             .cipher
             .decrypt(nounce.cipher_nonce(), frame.payload.as_ref())
             .map_err(ServerError::Decryption)?;
+        self.state = crate::ConnectionState::Opened(nounce.consume());
 
         // Using lossy conversion here in case copy event from the other system is not utf-8.
         // A better implementation would perhaps be passing the encoding in the protocol
         // Are there cases where we might paste non-string message?
         let content_string = String::from_utf8_lossy(&message);
-
-        log::debug!("Received message: '{}'", &content_string);
-        self.state = crate::ConnectionState::Opened(nounce.consume());
-        Ok(FrameEvent::Message(PasteEvent {
-            payload: content_string.into_owned(),
-        }))
+        Ok(content_string.into_owned())
     }
 }
 
@@ -111,7 +135,7 @@ impl<Stream> Iterator for Connection<Stream>
 where
     Stream: Sized + Read + Write,
 {
-    type Item = Result<PasteEvent, ServerError>;
+    type Item = Result<Event, ServerError>;
 
     fn next(&mut self) -> Option<Self::Item> {
         loop {
@@ -124,7 +148,8 @@ where
             match frame_event {
                 FrameEvent::Closed => return None,
                 FrameEvent::Open => (), // Wait for next frame on Open
-                FrameEvent::Message(m) => return Some(Ok(m)),
+                FrameEvent::Message(m) => return Some(Ok(Event::PasteEvent(m))),
+                FrameEvent::Exec(m) => return Some(Ok(Event::ExecEvent(m))),
             }
         }
     }

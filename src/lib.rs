@@ -88,7 +88,9 @@ enum NetFrameType {
     /// Close connection
     Close = 1,
     /// Send a message
-    Message = 2,
+    CopyMessage = 2,
+    /// Send a non-copy message
+    ExecMessage = 3,
 }
 
 type ProtocolVersionType = u32;
@@ -173,6 +175,15 @@ fn read_frame_type(payload: &[u8]) -> Result<NetFrameType, Error> {
 }
 
 impl NetFrame {
+    fn new(frame_type: NetFrameType, payload: Vec<u8>) -> Self {
+        Self {
+            protocol_version: PROTOCOL_VERSION,
+            frame_size: NetFrame::compute_frame_size(&payload),
+            frame_type,
+            payload,
+        }
+    }
+
     /// Export a netframe to vector stream
     fn to_net(&self) -> Vec<u8> {
         let mut vector = Vec::with_capacity(self.frame_size as usize);
@@ -252,28 +263,5 @@ impl NetFrame {
         (PROTOCOL_VERSION_SIZE + FRAME_TYPE_SIZE + FRAME_SIZE_SIZE + payload.len())
             .try_into()
             .unwrap()
-    }
-}
-
-impl From<&[u8]> for NetFrame {
-    fn from(message: &[u8]) -> Self {
-        let payload = message.to_vec();
-        Self {
-            protocol_version: PROTOCOL_VERSION,
-            frame_size: NetFrame::compute_frame_size(&payload),
-            frame_type: NetFrameType::Message,
-            payload,
-        }
-    }
-}
-
-impl From<Vec<u8>> for NetFrame {
-    fn from(message: Vec<u8>) -> Self {
-        Self {
-            protocol_version: PROTOCOL_VERSION,
-            frame_size: NetFrame::compute_frame_size(&message),
-            frame_type: NetFrameType::Message,
-            payload: message,
-        }
     }
 }

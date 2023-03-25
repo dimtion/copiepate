@@ -3,12 +3,16 @@ use std::{
     net::TcpStream,
 };
 
-use chacha20poly1305::aead::{Aead};
+use chacha20poly1305::aead::Aead;
 use chacha20poly1305::Key;
 use chacha20poly1305::KeyInit;
 use thiserror::Error;
 
-use crate::{Cipher, NetFrame, Nonce, CLOSE_PAYLOAD};
+use crate::{
+    Cipher, NetFrame,
+    NetFrameType::{self, CopyMessage},
+    Nonce, CLOSE_PAYLOAD,
+};
 
 pub struct Client<'a> {
     pub address: &'a str,
@@ -57,7 +61,7 @@ impl<'a> Client<'a> {
         self.handle_open(&self.next_frame(&mut stream)?)?;
         log::trace!("Received open response");
 
-        self.send_message(&mut stream, message)?;
+        self.send_message(&mut stream, CopyMessage, message)?;
 
         log::trace!("Sending closing frame");
         self.send_close(&mut stream)?;
@@ -95,14 +99,8 @@ impl<'a> Client<'a> {
     }
 
     fn send_close<T: Write>(&mut self, stream: &mut T) -> Result<(), ClientError> {
-        let nonce = match self.state {
-            crate::ConnectionState::Opened(n) => n,
-            _ => {
-                return Err(ClientError::InvalidState(String::from(
-                    "Invalid state while sending closing frame",
-                )))
-            }
-        };
+        let nonce = self.opened_conn_nounce()?;
+
         let cipher_payload = self
             .cipher
             .encrypt(nonce.cipher_nonce(), CLOSE_PAYLOAD.as_slice())
@@ -115,25 +113,31 @@ impl<'a> Client<'a> {
     fn send_message<T: Write>(
         &mut self,
         stream: &mut T,
+        m_type: NetFrameType,
         message: &[u8],
     ) -> Result<(), ClientError> {
-        let nonce = match self.state {
-            crate::ConnectionState::Opened(n) => n,
-            _ => {
-                return Err(ClientError::InvalidState(String::from(
-                    "Invalid state while sending message",
-                )))
-            }
-        };
+        let nonce = self.opened_conn_nounce()?;
 
         let cipher_message = self
             .cipher
             .encrypt(nonce.cipher_nonce(), message)
             .map_err(ClientError::Encryption)?;
-        let message_frame = NetFrame::from(cipher_message);
+        let message_frame = NetFrame::new(m_type, cipher_message);
         log::trace!("Sending payload with size: {}", message_frame.frame_size);
         stream.write_all(&message_frame.to_net())?;
         self.state = crate::ConnectionState::Opened(nonce.consume());
         Ok(())
+    }
+
+    fn opened_conn_nounce(&mut self) -> Result<Nonce, ClientError> {
+        let nonce = match self.state {
+            crate::ConnectionState::Opened(n) => n,
+            _ => {
+                return Err(ClientError::InvalidState(String::from(
+                    "Invalid state: connection is not opened.",
+                )))
+            }
+        };
+        Ok(nonce)
     }
 }

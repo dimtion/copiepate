@@ -12,7 +12,7 @@ use derive_builder::Builder;
 use crate::Cipher;
 
 use self::{
-    connection::{Connection, PasteEvent},
+    connection::{Connection, Event, ExecEvent, PasteEvent},
     error::ServerError,
 };
 
@@ -78,7 +78,8 @@ where
         let connection = Connection::new(stream, self.cipher.clone());
         for paste_event in connection {
             match paste_event {
-                Ok(e) => self.handle_paste_event(&e),
+                Ok(Event::PasteEvent(e)) => self.handle_paste_event(&e),
+                Ok(Event::ExecEvent(e)) => self.handle_exec_event(&e),
                 Err(e) => {
                     log::error!("Error handling connection: {e}");
                     break;
@@ -94,12 +95,19 @@ where
         }
 
         log::info!("New message saved to clipboard");
-        if let Err(e) = self.exec_command(event) {
+        if let Err(e) = self.exec_command(&event.payload) {
             log::error!("Failed to execute custom command: {}", e);
         };
     }
 
-    fn exec_command(&self, event: &PasteEvent) -> Result<(), ServerError> {
+    fn handle_exec_event(&mut self, event: &ExecEvent) {
+        log::info!("New message saved to clipboard");
+        if let Err(e) = self.exec_command(&event.payload) {
+            log::error!("Failed to execute custom command: {}", e);
+        };
+    }
+
+    fn exec_command(&self, payload: &str) -> Result<(), ServerError> {
         let exec_command = match &self.exec_command {
             None => return Ok(()),
             Some(c) => c,
@@ -116,7 +124,7 @@ where
 
         let mut child_stdin = child.stdin.take().expect("Failed to take child stdin");
 
-        let payload = event.payload.clone();
+        let payload = payload.to_owned();
         std::thread::spawn(move || {
             child_stdin
                 .write_all(payload.as_bytes())
